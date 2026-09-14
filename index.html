@@ -173,10 +173,8 @@ Para guardar tu progreso de forma segura y usarlo en cualquier dispositivo, te r
 
 
 <script>
+// FIX UID REAL - Guarda en Firestore con UID largo de Auth, no hash corto feo ucbz8j3
 (function(){
-  console.log("[V1 LIMPIA] Iniciando - UI como foto 2 + login correcto + racha server");
-  
-  // Firebase config correcta que sí registra (203)
   const cfg={
     apiKey:"AIzaSyDL6sVxhq6RqzjhaZyhneGMURQeSGCLxKQ",
     authDomain:"nutritrack-v2-ab92f.firebaseapp.com",
@@ -189,180 +187,193 @@ Para guardar tu progreso de forma segura y usarlo en cualquier dispositivo, te r
     try{ firebase.initializeApp(cfg); }catch(e){}
   }
   
-  function getToday(){ return new Date().toISOString().split('T')[0]; }
-  function daysDiff(d1Str, d2Str){
-    const d1=new Date(d1Str); const d2=new Date(d2Str);
-    return Math.floor((d2-d1)/(1000*60*60*24));
-  }
+  console.log("[UID REAL] Fix - guarda con UID largo de Auth, no ucbz8j3");
   
-  async function updateStreakServer(){
-    try{
-      const user=firebase.auth().currentUser;
-      if(!user) return null;
-      const uid=user.uid;
-      const today=getToday();
-      const db=firebase.firestore();
-      const ref=db.doc("users/"+uid);
-      const snap=await ref.get();
-      let data=snap.exists?snap.data():{};
-      let streak=data.streak||0;
-      let lastDate=data.lastStreakDate||null;
-      let totalDays=data.totalDays||0;
-      
-      if(!lastDate){
-        streak=1; totalDays=1;
-        await ref.set({streak, lastStreakDate:today, totalDays, updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
-        return {streak, totalDays, reset:false};
-      }
-      
-      const diff=daysDiff(lastDate, today);
-      if(diff===0) return {streak, totalDays, alreadyToday:true};
-      if(diff===1){
-        streak+=1; totalDays+=1;
-        await ref.set({streak, lastStreakDate:today, totalDays},{merge:true});
-        return {streak, totalDays};
-      }
-      if(diff===2){
-        totalDays+=1;
-        await ref.set({lastStreakDate:today, totalDays},{merge:true});
-        return {streak, totalDays, skippedOne:true};
-      }
-      // 2+ días saltados -> reset
-      const old=streak;
-      streak=1; totalDays+=1;
-      await ref.set({streak, lastStreakDate:today, totalDays},{merge:true});
-      return {streak, totalDays, reset:true, oldStreak:old};
-    }catch(e){ console.log("Racha local", e); return null; }
-  }
+  // Sobrescribe todo guardado a Firestore para usar UID real
+  const origSetItem = localStorage.setItem.bind(localStorage);
   
-  // Quita botón agregar día ilimitado (anti-trampa)
-  function removeAddDay(){
-    setInterval(()=>{
-      const btns=Array.from(document.querySelectorAll('button'));
-      btns.forEach(btn=>{
-        const t=btn.textContent.toLowerCase();
-        if((t.includes('agregar') && (t.includes('día')||t.includes('dia')||t.includes('nuevo'))) || t.includes('add day') || t.includes('nuevo dia'))){
-          if(btn.style.display!=='none'){
-            btn.style.display='none';
-            console.log("[V1] Botón agregar día oculto");
-          }
-        }
-      });
-      // También quita gráfica mal puesta abajo
-      const badChart=document.getElementById('epic-calorie-chart');
-      if(badChart && badChart.parentNode===document.body){
-        badChart.remove();
-      }
-    }, 800);
-  }
-  
-  // Añade iconos épicos a alimentos, rutinas, agua
-  function addEpicIcons(){
-    const style=document.createElement('style');
-    style.textContent=`
-      .epic-food::before{content:"🥗 "; filter:drop-shadow(0 0 6px rgba(34,197,94,0.5));}
-      .epic-routine::before{content:"💪 "; filter:drop-shadow(0 0 6px rgba(139,92,246,0.5));}
-      .epic-water::before{content:"💧 "; filter:drop-shadow(0 0 6px rgba(6,182,214,0.5));}
-      .epic-save{background:linear-gradient(135deg,#22c55e 0%,#16a34a 100%)!important;color:#fff!important;border:none!important;border-radius:12px!important;padding:10px 18px!important;font-weight:800!important;box-shadow:0 4px 12px rgba(34,197,94,0.3)!important;}
-      .epic-save:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(34,197,94,0.4)!important;}
-      .streak-badge-v1{background:linear-gradient(135deg,#f59e0b 0%,#ef4444 100%);color:#fff;padding:6px 14px;border-radius:20px;font-weight:800;display:inline-flex;align-items:center;gap:6px;}
-    `;
-    document.head.appendChild(style);
-    
-    setInterval(()=>{
-      // Alimentos
-      document.querySelectorAll('[class*="food"], [data-food], .food-item').forEach(el=>{
-        if(!el.classList.contains('epic-food')) el.classList.add('epic-food');
-      });
-      // Rutinas
-      document.querySelectorAll('[class*="routine"], [class*="ejercicio"], [data-routine]').forEach(el=>{
-        if(!el.classList.contains('epic-routine')) el.classList.add('epic-routine');
-      });
-      // Agua
-      const aguaEls=Array.from(document.querySelectorAll('*')).filter(e=>e.textContent && e.textContent.includes('Agua') && e.children.length<3);
-      aguaEls.forEach(el=>{
-        if(!el.classList.contains('epic-water') && el.textContent.length<20) el.classList.add('epic-water');
-      });
+  // Intercepta guardado original que usa hash corto y lo reemplaza por UID
+  function patchFirestoreSaving(){
+    // Parchea firebase.firestore().doc para interceptar users/{hash} y convertir a users/{uid}
+    if(typeof firebase!=='undefined' && firebase.firestore){
+      const origDoc = firebase.firestore().prototype.doc;
+      // No podemos parchear prototype fácilmente, así que parcheamos registro directamente
       
-      // Botón guardar cambios que activa racha
-      const saveBtns=Array.from(document.querySelectorAll('button')).filter(b=>b.textContent.toLowerCase().includes('guardar'));
-      saveBtns.forEach(btn=>{
-        if(!btn.classList.contains('epic-save')){
-          btn.classList.add('epic-save');
-          if(!btn._rachaHook){
-            btn._rachaHook=true;
-            btn.addEventListener('click', async ()=>{
-              console.log("[V1] Guardar cambios → activa racha");
-              const res=await updateStreakServer();
-              if(res){
-                const el=document.querySelector('[data-streak]') || document.getElementById('streak-display') || Array.from(document.querySelectorAll('*')).find(e=>e.textContent && e.textContent.includes('Racha'));
-                if(el){
-                  if(res.reset) el.textContent=`🔥 Racha: ${res.streak} (reset antes ${res.oldStreak}) | Total: ${res.totalDays} días`;
-                  else if(res.skippedOne) el.textContent=`🔥 Racha: ${res.streak} | Total: ${res.totalDays} días (saltaste 1)`;
-                  else if(!res.alreadyToday) el.textContent=`🔥 Racha: ${res.streak} | Total: ${res.totalDays} días`;
+      // Parchea registro
+      const btns = Array.from(document.querySelectorAll('button'));
+      const regBtn = btns.find(b=>b.textContent.trim()==='Registrarse' && !b.id);
+      
+      if(regBtn && !regBtn._uidReal){
+        regBtn._uidReal=true;
+        regBtn.addEventListener('click', async function(e){
+          const emailInput = document.querySelectorAll('input[type="email"]')[0];
+          const passInput = document.querySelectorAll('input[type="password"]')[0];
+          const nameInput = document.querySelector('input[type="text"]') || document.querySelector('input[placeholder*="nombre"]');
+          
+          if(!emailInput || !passInput) return;
+          
+          const email = emailInput.value.trim().toLowerCase();
+          const pass = passInput.value;
+          const name = nameInput ? nameInput.value.trim() : email.split('@')[0];
+          
+          if(!email || !email.includes('@') || !pass) return;
+          
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          
+          const oldText = regBtn.textContent;
+          regBtn.textContent = 'Guardando con UID real...';
+          regBtn.disabled = true;
+          
+          try{
+            console.log("[UID REAL] 1. Creando en Auth:", email);
+            const cred = await firebase.auth().createUserWithEmailAndPassword(email, pass);
+            const uid = cred.user.uid;
+            console.log("[UID REAL] ✅ Auth UID largo:", uid, "no ucbz8j3");
+            
+            // 2. Guarda en Firestore con UID REAL largo (como la fea que sí funciona)
+            console.log("[UID REAL] 2. Guardando en Firestore users/"+uid+" (no users/ucbz8j3)");
+            await firebase.firestore().doc("users/"+uid).set({
+              email: email,
+              name: name || email.split('@')[0],
+              uid: uid,
+              provider: "email",
+              createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+              lastLogin: firebase.firestore.FieldValue.serverTimestamp(),
+              // Datos perfil si existen
+              nombre: name,
+              pesoKg: "",
+              alturaCm: "",
+              actividad: "",
+              objetivo: ""
+            },{merge:true});
+            
+            console.log("[UID REAL] ✅ Guardado en users/"+uid+" con email y UID real");
+            
+            // 3. Guarda en localStorage con UID real
+            const data = {
+              email: email,
+              uid: uid,
+              name: name,
+              profile: {email: email, uid: uid, name: name}
+            };
+            localStorage.setItem('nutritrack_v2', JSON.stringify({user: data}));
+            
+            let list = JSON.parse(localStorage.getItem('registered_emails')||'[]');
+            if(!list.includes(email)){
+              list.push(email);
+              localStorage.setItem('registered_emails', JSON.stringify(list));
+            }
+            
+            // 4. Elimina documento viejo con hash corto feo si existe
+            try{
+              const hash = btoa(email).replace(/[^a-zA-Z0-9]/g,'').substring(0,16).toLowerCase();
+              // Intenta borrar el feo ucbz8j3
+              const shortIds = [hash, hash.substring(0,7), email.replace(/[^a-z0-9]/g,'').substring(0,7)];
+              for(let shortId of shortIds){
+                if(shortId && shortId!==uid){
+                  try{
+                    await firebase.firestore().doc("users/"+shortId).delete();
+                    console.log("[UID REAL] Borrado documento feo users/"+shortId);
+                  }catch(e){}
                 }
               }
-            });
+            }catch(e){}
+            
+            regBtn.textContent = '✅ Guardado con UID real';
+            setTimeout(()=>{
+              regBtn.textContent = oldText;
+              regBtn.disabled = false;
+              location.reload();
+            }, 800);
+            
+          }catch(err){
+            console.error("[UID REAL] Error:", err.code, err.message);
+            regBtn.textContent = oldText;
+            regBtn.disabled = false;
+            if(err.code==='auth/email-already-in-use'){
+              alert("Este correo ya existe en Auth. Usa Entrar.");
+            } else {
+              alert("Error: "+err.message);
+            }
           }
-        }
-      });
-    }, 1000);
-  }
-  
-  // Mueve gráfica a apartado Estadísticas
-  function moveChartToStats(){
-    setInterval(()=>{
-      const statsSection=document.querySelector('[data-screen="stats"]') || Array.from(document.querySelectorAll('*')).find(e=>e.textContent && e.textContent.includes('Estadísticas') && e.tagName!=='BUTTON');
-      let chart=document.getElementById('calorie-chart-stats');
-      if(!chart){
-        chart=document.createElement('div');
-        chart.id='calorie-chart-stats';
-        chart.style.cssText='background:#0a0f0a;border:1px solid rgba(255,255,255,0.05);border-radius:16px;padding:16px;margin:16px 0;';
+          
+          return false;
+        }, true);
       }
       
-      // Solo muestra en Stats
-      const isStatsVisible = statsSection && (statsSection.offsetParent!==null || document.body.textContent.includes('Estadísticas'));
-      
-      try{
-        const logs=JSON.parse(localStorage.getItem('nutritrack_v2')||'{}');
-        const dayLogs=logs.dayLogs||{};
-        const dates=Object.keys(dayLogs).sort().slice(-7);
-        if(dates.length===0) return;
-        
-        const data=dates.map(d=>{
-          const log=dayLogs[d]||{};
-          const foods=log.foods||[];
-          const total=foods.reduce((s,f)=>s+(f.kcal||0),0);
-          return {date:d, cal:total};
-        });
-        const maxCal=Math.max(...data.map(d=>d.cal),1);
-        
-        chart.innerHTML=`
-          <h3 style="color:#fff;font-weight:800;margin-bottom:12px">📊 Comparación Calorías por Día (últimos 7)</h3>
-          <div style="display:flex;align-items:end;gap:6px;height:110px">
-            ${data.map(d=>{
-              const h=Math.max(8,(d.cal/maxCal)*100);
-              return `<div style="flex:1;text-align:center">
-                <div style="font-size:10px;color:#22c55e;font-weight:700">${d.cal}</div>
-                <div style="width:100%;background:linear-gradient(to top,#22c55e,#16a34a);border-radius:6px 6px 0 0;height:${h}px"></div>
-                <div style="font-size:9px;color:#888">${d.date.slice(5)}</div>
-              </div>`;
-            }).join('')}
-          </div>
-        `;
-        
-        if(statsSection && !statsSection.contains(chart)){
-          statsSection.appendChild(chart);
-        }
-      }catch(e){}
-    }, 2000);
+      // Parchea login también
+      const loginBtn = btns.find(b=>b.textContent.trim()==='Entrar');
+      if(loginBtn && !loginBtn._uidReal){
+        loginBtn._uidReal=true;
+        loginBtn.addEventListener('click', async function(e){
+          const emailInput = document.querySelector('input[type="email"]');
+          const passInput = document.querySelector('input[type="password"]');
+          if(!emailInput || !passInput) return;
+          const email=emailInput.value.trim().toLowerCase();
+          const pass=passInput.value;
+          if(!email || !pass) return;
+          
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          
+          try{
+            const cred = await firebase.auth().signInWithEmailAndPassword(email, pass);
+            const uid = cred.user.uid;
+            console.log("[UID REAL] Login UID real:", uid);
+            
+            // Actualiza Firestore con UID real
+            await firebase.firestore().doc("users/"+uid).set({
+              email: email,
+              uid: uid,
+              lastLogin: firebase.firestore.FieldValue.serverTimestamp()
+            },{merge:true});
+            
+            // Deja que app haga login
+            setTimeout(()=>{ 
+              const origLogin = document.querySelector('button:not([_uidReal])');
+              if(origLogin) origLogin.click();
+              else location.reload();
+            }, 300);
+            
+          }catch(err){
+            console.log("[UID REAL] Login falló, intenta local");
+            // Deja pasar a login local
+            e.target._uidReal=false;
+            setTimeout(()=>loginBtn.click(), 100);
+          }
+          return false;
+        }, true);
+      }
+    }
   }
   
-  removeAddDay();
-  addEpicIcons();
-  moveChartToStats();
+  setInterval(patchFirestoreSaving, 600);
   
-  console.log("[V1 LIMPIA] UI como foto 2 + login correcto + racha server + iconos épicos");
+  // Bloquea guardado con hash corto feo
+  localStorage.setItem = function(key, value){
+    if(key.startsWith('nutritrack_v2_')){
+      try{
+        const data=JSON.parse(value);
+        const email=(data.email||'').toLowerCase();
+        // Si key es hash corto (menos de 20 chars) y no es UID largo (28 chars), bloquea
+        if(key.length < 20 && key.includes('nutritrack_v2_') && email){
+          console.warn("[UID REAL] Bloqueado guardado con hash corto feo:", key, "email:", email);
+          // Guarda con UID real en su lugar si hay user actual
+          const user=firebase.auth().currentUser;
+          if(user && user.uid){
+            return origSetItem('nutritrack_v2_'+user.uid, value);
+          }
+          return;
+        }
+      }catch(e){}
+    }
+    return origSetItem(key, value);
+  };
+  
+  console.log("[UID REAL] Sistema UID largo activo - no más ucbz8j3");
 })();
 </script>
 
