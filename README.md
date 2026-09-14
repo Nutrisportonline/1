@@ -35,3 +35,13 @@ Proyecto configurado: `nutritrack-v2-ab92f`.
 - La sesión y las operaciones de correo/contraseña se validan con Firebase Auth.
 
 ## Versión: v1.0
+
+
+## NutriSport Pro / Monetización
+- Google Sign-In conservado.
+- Cuenta Pro de prueba fija por UID `6oRhKb66WdNrc0ZJnD4dpjo3E4i2` y correo `luisangelesquerra@gmail.com`.
+- También reconoce futuros usuarios con `isPremium: true`, `plan: "pro"` o `subscriptionStatus: "active"` en el perfil de Firestore.
+- El anuncio de Monetag se carga únicamente al entrar al dashboard de usuarios no-Pro y una vez por visita al dashboard.
+- Se amplió el catálogo de alimentos y ejercicios.
+
+> Nota: el bloqueo visual de Pro del frontend no sustituye una validación segura de suscripción en backend/Firestore Rules. Para cobros reales, el estado premium debe ser escrito por un backend o proveedor de pagos confiable.
